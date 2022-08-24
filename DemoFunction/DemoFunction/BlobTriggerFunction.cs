@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -6,7 +8,9 @@ using System.Net;
 using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using CsvHelper;
+using DemoFunction.Model;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
@@ -22,7 +26,7 @@ namespace DemoFunction
             log.LogInformation($"C# Blob trigger function Processed blob\n Name:{name} \n Size: {myBlob.Length} Bytes");
 
             var json = Convert(myBlob);
-            PostJSON(json);
+            PostJSONToSql(json);
 
         }
 
@@ -36,24 +40,54 @@ namespace DemoFunction
             return JsonConvert.SerializeObject(csvRecords);
         }
 
-        public static async Task PostJSON(string json)
+        public static async Task PostJSONToSql(string json)
         {
-            var request = (HttpWebRequest)WebRequest.Create("<Your Web App URL>");
 
-            var data = Encoding.ASCII.GetBytes(json);
-
-            request.Method = "POST";
-            request.ContentType = "application/json";
-            request.ContentLength = data.Length;
-
-            using (var stream = request.GetRequestStream())
+            var result = JsonConvert.DeserializeObject<List<UserModel>>(json);
+            foreach (var item in result)
             {
-                stream.Write(data, 0, data.Length);
+                try
+                {
+                    using (SqlConnection connection = new SqlConnection("Server=tcp:demoazfunction.database.windows.net,1433;Initial Catalog=demofunction;Persist Security Info=False;User ID=demofuntionadmin;Password=Password@098;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"))
+                    {
+                        // Opening a connection
+                        connection.Open();
+
+
+                        // Prepare the SQL Query
+                        var query = $"INSERT INTO [dbo].[demoFunction] " +
+                            $"        ([FirstName]      " +
+                            $"        ,[LastName]      " +
+                            $"        ,[MobileNumber]   " +
+                            $"        ,[City]    " +
+                            $"        ,[Country])" +
+                            $"    VALUES        (" +
+                            $"       '{item.FirstName}'  " +
+                            $"      ,'{item.LastName}'   " +
+                            $"      ,{item.MobileNumber}" +
+                            $"      ,'{item.City}'" +
+                            $"      ,'{item.Country}'" +
+                            ")";
+
+                        // Prepare the SQL command and execute query
+                        SqlCommand command = new SqlCommand(query, connection);
+
+                        // Open the connection, execute and close connection
+                        if (command.Connection.State == System.Data.ConnectionState.Open)
+                        {
+                            command.Connection.Close();
+                        }
+                        command.Connection.Open();
+                        command.ExecuteNonQuery();
+
+                    }
+                }
+                catch (Exception e)
+                {
+                    
+                }
             }
-
-            var response = (HttpWebResponse)request.GetResponse();
-
-            var responseString = new StreamReader(response.GetResponseStream()).ReadToEnd();
+           
         }
 
     }
